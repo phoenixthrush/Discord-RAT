@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+reqwest = { version = "0.12.12", default-features = false, features = ["native-tls"] }
 serenity = { version = "0.12.4", default-features = false, features = ["builder", "client", "gateway", "model", "native_tls_backend", "utils"] }
 tokio = { version = "1.43.0", default-features = false, features = ["rt-multi-thread", "process"] }
 #anyhow = { version = "1.0.95", default-features = false }

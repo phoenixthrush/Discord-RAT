@@ -81,6 +81,50 @@ impl EventHandler for Handler {
                 let _ = msg.channel_id.say(&ctx.http, "File not found!").await;
             }
         }
+        if msg.content == "!upload" {
+            if let Some(attachment) = msg.attachments.first() {
+                let file_url = &attachment.url;
+                let file_name = attachment.filename.clone();
+                println!("{}: {}", file_name, file_url);
+
+                let local_path = file_name.clone();
+
+                match reqwest::get(file_url).await {
+                    Ok(response) if response.status().is_success() => {
+                        if let Ok(bytes) = response.bytes().await {
+                            if let Err(why) = tokio::fs::write(local_path.clone(), bytes).await {
+                                println!("Error saving file: {why:?}");
+                            } else {
+                                msg.channel_id
+                                    .say(&ctx.http, format!("File uploaded as: {}", local_path))
+                                    .await
+                                    .unwrap();
+                            }
+                        }
+                    }
+                    Ok(response) => {
+                        msg.channel_id
+                            .say(
+                                &ctx.http,
+                                format!("Error downloading file: {:?}", response.status()),
+                            )
+                            .await
+                            .unwrap();
+                    }
+                    Err(_) => {
+                        msg.channel_id
+                            .say(&ctx.http, "Error downloading file")
+                            .await
+                            .unwrap();
+                    }
+                }
+            } else {
+                msg.channel_id
+                    .say(&ctx.http, "No file attached")
+                    .await
+                    .unwrap();
+            }
+        }
     }
 
     // Set a handler to be called on the `ready` event. This is called when a shard is booted, and
