@@ -7,9 +7,9 @@ edition = "2024"
 reqwest = { version = "0.12.12", default-features = false, features = ["native-tls"] }
 serenity = { version = "0.12.4", default-features = false, features = ["builder", "client", "gateway", "model", "native_tls_backend", "utils"] }
 tokio = { version = "1.43.0", default-features = false, features = ["rt-multi-thread", "process"] }
-#anyhow = { version = "1.0.95", default-features = false }
-#cryptify = { version = "3.1.1", default-features = false }
+cryptify = { version = "3.1.1", default-features = false }
 #tokio = { version = "1.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 #walkdir = { version = "2.5.0", default-features = false }
 #whoami = { version ="1.5.2", default-features = false }
 #zip = { version = "2.2.2", default-features = false, features = ["bzip2"] }
+#anyhow = { version = "1.0.95", default-features = false }

